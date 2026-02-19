@@ -1,7 +1,4 @@
-<?php
-
-declare(strict_types=1);
-
+<?php declare(strict_types=1);
 
 namespace hiqdev\yii2\export\components;
 
@@ -32,8 +29,15 @@ class Exporter extends Component
 
     public function runJob(string $id, StartExportAction $action, array $representationColumns): void
     {
-        $exportHandler = $this->prepareExporter($action, $representationColumns);
         $this->job = ExportJob::findOrCreate($id);
+
+        try {
+            $exportHandler = $this->prepareExporter($action, $representationColumns);
+        } catch (Exception $e) {
+            Yii::error('Export error: ' . $e->getMessage());
+            $this->handleExportError($e);
+            return;
+        }
 
         $exportHandler->setExportJob($this->job);
 

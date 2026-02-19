@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 
 namespace hiqdev\yii2\export\helpers;
@@ -30,6 +28,10 @@ class SaveManager
 
     public function delete(): bool
     {
+        if (!file_exists($this->getFilePath())) {
+            return true;
+        }
+
         return unlink($this->getFilePath());
     }
 

@@ -1,7 +1,4 @@
-<?php
-
-declare(strict_types=1);
-
+<?php declare(strict_types=1);
 
 namespace hiqdev\yii2\export\exporters;
 
@@ -34,7 +31,7 @@ abstract class AbstractExporter implements ExporterInterface
 
     public ?GridView $grid = null;
     public bool $exportFooter = true;
-    public int $batchSize = 2000;
+    public int $batchSize = 500;
     public string $target;
     public ExportType $exportType;
     protected ?string $gridClassName = null;
