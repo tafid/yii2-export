@@ -17,12 +17,12 @@ use PHPUnit\Framework\TestCase;
  * across a WRITE_CHUNK_SIZE (500) boundary.
  *
  * Exporter::runJob()'s HiAPI-backed generateBody() path is not covered here;
- * that would need a hiart Connection/ActiveDataProvider fixture, left as
+ * that would need a HiArt Connection/ActiveDataProvider fixture, left as
  * follow-up (see docs/investigations/export-performance.md open questions).
  */
 final class ExportStreamingSmokeTest extends TestCase
 {
-    private const ROW_COUNT = 1200; // > 2x WRITE_CHUNK_SIZE, forces multiple addRows() flushes
+    private const int ROW_COUNT = 1200; // > 2x WRITE_CHUNK_SIZE, forces multiple addRows() flushes
 
     /** @var list<string> */
     private array $tempFiles = [];

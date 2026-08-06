@@ -8,6 +8,8 @@ namespace hiqdev\yii2\export\actions;
 use hipanel\actions\IndexAction;
 use hipanel\actions\RunProcessAction;
 use hiqdev\yii2\export\components\ExportRequestFactory;
+use hiqdev\yii2\export\models\ExportJob;
+use Throwable;
 use Yii;
 use yii\web\BadRequestHttpException;
 
@@ -22,12 +24,32 @@ class StartExportAction extends IndexAction
                 if (!ctype_digit($id) || strlen($id) !== 10) {
                     throw new BadRequestHttpException('Invalid export ID format');
                 }
-                $representation = $this->ensureRepresentationCollection()->getByName($this->getUiModel()->representation);
-                $request = (new ExportRequestFactory())->fromStartExportAction($this, $representation->getColumns());
-                Yii::$app->exporter->runJob($id, $request);
+                $this->performExport($id);
             };
             $action->run();
         }
         Yii::$app->end();
+    }
+
+    /**
+     * Anything that fails here happens before Exporter::runJob() ever creates
+     * an ExportJob record, so without this catch the id never exists in
+     * cache: progress-export polls a synthetic "still running" placeholder
+     * forever, and the 60s stall-guard eventually closes the SSE connection
+     * without ever sending a distinguishable terminal frame - the user sees
+     * no error and download-export never fires. Persisting a cancelled job
+     * here means the very next progress-export poll gets a real terminal
+     * status with the actual error message.
+     */
+    protected function performExport(string $id): void
+    {
+        try {
+            $representation = $this->ensureRepresentationCollection()->getByName($this->getUiModel()->representation);
+            $request = (new ExportRequestFactory())->fromStartExportAction($this, $representation->getColumns());
+            Yii::$app->exporter->runJob($id, $request);
+        } catch (Throwable $e) {
+            Yii::error('Export failed before it could start: ' . $e->getMessage(), __METHOD__);
+            ExportJob::findOrCreate($id)->cancel($e->getMessage());
+        }
     }
 }

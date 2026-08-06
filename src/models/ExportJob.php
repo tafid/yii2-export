@@ -34,8 +34,8 @@ class ExportJob extends Model
      * so persisting a commit more often than COMMIT_INTERVAL_SECONDS is pure
      * cache round-trip overhead with no observable UX benefit.
      */
-    private const COMMIT_ROW_INTERVAL = 50;
-    private const COMMIT_INTERVAL_SECONDS = 0.25;
+    private const int COMMIT_ROW_INTERVAL = 50;
+    private const float COMMIT_INTERVAL_SECONDS = 0.25;
     private ?float $lastCommitAt = null;
     private int $rowsSinceCommit = 0;
 
