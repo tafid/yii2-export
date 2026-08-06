@@ -8,6 +8,8 @@
 
 This document intentionally separates **facts verified by reading the source** from **interpretation** and from **open questions**. Treat anything outside "Confirmed facts" as a hypothesis to re-check, not a given.
 
+**Status update (same branch, `export-performance-refactor`, commits after this one):** the decoupling and improvements described as a *plan* in §2/§3/§5 below have since been implemented — `ExportRequest`/`ExportRequestFactory` now decouple `Exporter::runJob()` from `StartExportAction`/`Controller`; `AbstractExporter::generateBody()` streams rows via a `Generator` instead of buffering the whole export; `ExportJob::commitThrottled()` replaces the per-row unconditional cache commit; `SaveManager` writes a real file extension and streams downloads via `fopen()` instead of base64. PHPUnit coverage exists under `tests/unit` and `tests/smoke` (run via `vendor/bin/phpunit -c vendor/hiqdev/yii2-export/phpunit.xml.dist` from the app root). §1.7's "no tests exist" and §5's "technically reachable... after decoupling" should be read as the *pre-refactor* baseline, not the current state. The one gap called out below (§4, HiAPI-backed `generateBody()` integration coverage) is still open.
+
 ---
 
 ## 1. Confirmed facts
