@@ -147,9 +147,10 @@ abstract class AbstractExporter implements ExporterInterface
 
     /**
      * Writes one section's rows to the writer as they are produced instead of
-     * buffering the whole export in memory first. A Generator (e.g. generateBody())
-     * is flushed in WRITE_CHUNK_SIZE batches; plain arrays (header/footer, or a
-     * legacy batch-of-rows shape from a custom $sections callable) are written as-is.
+     * buffering the whole export in memory first. A Generator (e.g. generateBody(),
+     * or a custom $sections callable like DataExportAction's) is flushed in
+     * WRITE_CHUNK_SIZE batches; a plain array is a single row (header/footer/
+     * sub-headers all produce one row of column values, not a list of rows).
      */
     private function writeSection(WriterInterface $writer, $result): void
     {
@@ -176,24 +177,6 @@ abstract class AbstractExporter implements ExporterInterface
             return;
         }
 
-        if (is_array(reset($result)) && is_numeric(key($result))) {
-            // Legacy shape: array of batches, each an array of rows.
-            foreach ($result as $batch) {
-                $rows = [];
-                foreach ($batch as $row) {
-                    if (!empty($row)) {
-                        $rows[] = Row::fromValues($row);
-                    }
-                }
-                if (!empty($rows)) {
-                    $writer->addRows($rows);
-                }
-            }
-
-            return;
-        }
-
-        // Single row array (header/footer/sub-headers).
         $writer->addRows([Row::fromValues($result)]);
     }
 
@@ -302,7 +285,6 @@ abstract class AbstractExporter implements ExporterInterface
                 $job->increaseProgress()->commitThrottled();
             }
         }
-        $job->commit();
     }
 
     public function composeRequest($connection, $dataProvider): Request
