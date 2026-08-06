@@ -7,6 +7,7 @@ namespace hiqdev\yii2\export\actions;
 
 use hipanel\actions\IndexAction;
 use hipanel\actions\RunProcessAction;
+use hiqdev\yii2\export\components\ExportRequestFactory;
 use Yii;
 use yii\web\BadRequestHttpException;
 
@@ -22,7 +23,8 @@ class StartExportAction extends IndexAction
                     throw new BadRequestHttpException('Invalid export ID format');
                 }
                 $representation = $this->ensureRepresentationCollection()->getByName($this->getUiModel()->representation);
-                Yii::$app->exporter->runJob($id, $this, $representation->getColumns());
+                $request = (new ExportRequestFactory())->fromStartExportAction($this, $representation->getColumns());
+                Yii::$app->exporter->runJob($id, $request);
             };
             $action->run();
         }
