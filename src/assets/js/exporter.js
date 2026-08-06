@@ -170,26 +170,24 @@
         // how long the export took. The server already sets the correct
         // filename via Content-Disposition, so nothing needs to be computed
         // client-side.
+        // Once the iframe request is underway, the browser's own download UI
+        // (save dialog / download shelf) takes over - this app's progress bar
+        // only needs to cover the export itself, not the file transfer, so it
+        // doesn't need to know when the download actually finishes. iframe
+        // 'load' isn't reliable for a Content-Disposition: attachment response
+        // in every browser anyway (some never fire it for a navigation that
+        // turns into a download rather than rendering a page), so waiting on
+        // it - or on any long fallback timer - just leaves the bar stuck
+        // showing "Downloading" long after the browser has already taken over.
         progressDescriptionText.text(settings.messages.step2);
         const iframe = document.createElement("iframe");
         iframe.style.display = "none";
-        let settled = false;
-        const finish = () => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          resetExportUI();
-          iframe.remove();
-        };
-        // load isn't reliable for a Content-Disposition: attachment response
-        // in every browser (some never fire it for a navigation that turns
-        // into a download rather than rendering a page), so it's a nice-to-have
-        // early signal, not the only way the UI gets reset.
-        iframe.onload = finish;
-        setTimeout(finish, 10000);
         iframe.src = settings.downloadUrl + "?id=" + id;
         document.body.appendChild(iframe);
+        setTimeout(() => {
+          resetExportUI();
+          iframe.remove();
+        }, 1500);
       };
 
       $(this).on("click", startExport);
