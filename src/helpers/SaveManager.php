@@ -40,7 +40,7 @@ class SaveManager
      */
     public function getStream()
     {
-        return fopen('data://' . $this->job->mimeType . ';base64,' . base64_encode($this->getContent()), 'rb');
+        return fopen($this->getFilePath(), 'rb');
     }
 
     public function getContent(): string
@@ -55,7 +55,9 @@ class SaveManager
 
     public function getFilePath(): string
     {
-        return $this->getPath() . DIRECTORY_SEPARATOR . $this->job->id;
+        $suffix = $this->job->extension ? '.' . $this->job->extension : '';
+
+        return $this->getPath() . DIRECTORY_SEPARATOR . $this->job->id . $suffix;
     }
 
     private function getPath(): string

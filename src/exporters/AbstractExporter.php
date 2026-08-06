@@ -115,6 +115,12 @@ abstract class AbstractExporter implements ExporterInterface
     }
 
     /**
+     * Rows are flushed to the writer in chunks of this size instead of all at once,
+     * so peak memory for a section stays bounded regardless of export size.
+     */
+    private const WRITE_CHUNK_SIZE = 500;
+
+    /**
      * Export data to a file with flexible sections
      *
      * @param string $filePath Path to the output file
@@ -129,40 +135,66 @@ abstract class AbstractExporter implements ExporterInterface
 
         $writer = $this->getWriter();
         $writer->openToFile($filePath);
-        $rows = [];
 
         foreach ($sections as $sectionGenerator) {
-            $result = $sectionGenerator();
-
-            // Handle different result types: array, Generator, nested arrays
-            if ($result instanceof Generator) {
-                foreach ($result as $row) {
-                    if (!empty($row)) {
-                        $rows[] = Row::fromValues($row);
-                    }
-                }
-            } elseif (is_array($result)) {
-                // Check if it's an array of arrays (batches from generateBody)
-                if (!empty($result) && is_array(reset($result)) && is_numeric(key($result))) {
-                    foreach ($result as $batch) {
-                        foreach ($batch as $row) {
-                            if (!empty($row)) {
-                                $rows[] = Row::fromValues($row);
-                            }
-                        }
-                    }
-                } elseif (!empty($result)) {
-                    // Single row array
-                    $rows[] = Row::fromValues($result);
-                }
-            }
+            $this->writeSection($writer, $sectionGenerator());
         }
-
-        $writer->addRows($rows);
 
         $this->beforeClose($writer);
 
         $writer->close();
+    }
+
+    /**
+     * Writes one section's rows to the writer as they are produced instead of
+     * buffering the whole export in memory first. A Generator (e.g. generateBody())
+     * is flushed in WRITE_CHUNK_SIZE batches; plain arrays (header/footer, or a
+     * legacy batch-of-rows shape from a custom $sections callable) are written as-is.
+     */
+    private function writeSection(WriterInterface $writer, $result): void
+    {
+        if ($result instanceof Generator) {
+            $buffer = [];
+            foreach ($result as $row) {
+                if (empty($row)) {
+                    continue;
+                }
+                $buffer[] = Row::fromValues($row);
+                if (count($buffer) >= self::WRITE_CHUNK_SIZE) {
+                    $writer->addRows($buffer);
+                    $buffer = [];
+                }
+            }
+            if (!empty($buffer)) {
+                $writer->addRows($buffer);
+            }
+
+            return;
+        }
+
+        if (!is_array($result) || empty($result)) {
+            return;
+        }
+
+        if (is_array(reset($result)) && is_numeric(key($result))) {
+            // Legacy shape: array of batches, each an array of rows.
+            foreach ($result as $batch) {
+                $rows = [];
+                foreach ($batch as $row) {
+                    if (!empty($row)) {
+                        $rows[] = Row::fromValues($row);
+                    }
+                }
+                if (!empty($rows)) {
+                    $writer->addRows($rows);
+                }
+            }
+
+            return;
+        }
+
+        // Single row array (header/footer/sub-headers).
+        $writer->addRows([Row::fromValues($result)]);
     }
 
     protected function beforeClose(WriterInterface $writer): void
@@ -223,14 +255,18 @@ abstract class AbstractExporter implements ExporterInterface
         return $rows;
     }
 
-    protected function generateBody(): array
+    /**
+     * @return Generator<int, array> yields one compiled row at a time instead of
+     *     collecting the whole export in memory, so exportToFile() can stream rows
+     *     to the writer as they are produced.
+     */
+    protected function generateBody(): Generator
     {
         $connection = Yii::$container->get(HiapiConnectionInterface::class);
         if (empty($this->grid->columns)) {
-            return [];
+            return;
         }
 
-        $batch = [];
         $dp = $this->grid->dataProvider;
         if (!$dp instanceof ActiveDataProvider) {
             throw new Exception('DataProvider must be an instance of ActiveDataProvider');
@@ -254,22 +290,19 @@ abstract class AbstractExporter implements ExporterInterface
             foreach ($connection->sendPool($requests) as $response) {
                 $responses[] = $response;
             }
-            $this->exportJob->increaseProgress()->commit();
+            $job->increaseProgress()->commit();
         }
         $job->setTaskName(Yii::t('hiqdev.export', 'Generating a report'))->setTotal($dp->getTotalCount())->setUnit('rows')->commit();
         foreach ($responses as $response) {
             $data = $response->getData();
             $query = $response->getRequest()->getQuery();
-            $rows = [];
             $models = $query->populate($data);
             foreach ($models as $index => $model) {
-                $rows[] = $this->compileRow($model, $model->id, $index);
-                $job->increaseProgress()->commit();
+                yield $this->compileRow($model, $model->id, $index);
+                $job->increaseProgress()->commitThrottled();
             }
-            $batch[] = [...$rows];
         }
-
-        return $batch;
+        $job->commit();
     }
 
     public function composeRequest($connection, $dataProvider): Request

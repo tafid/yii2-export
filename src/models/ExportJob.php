@@ -29,6 +29,16 @@ class ExportJob extends Model
     private SaveManager $saver;
     private ExportJobStorage $storage;
 
+    /**
+     * SSE progress polling reads state at most once a second (see ProgressAction),
+     * so persisting a commit more often than COMMIT_INTERVAL_SECONDS is pure
+     * cache round-trip overhead with no observable UX benefit.
+     */
+    private const COMMIT_ROW_INTERVAL = 50;
+    private const COMMIT_INTERVAL_SECONDS = 0.25;
+    private ?float $lastCommitAt = null;
+    private int $rowsSinceCommit = 0;
+
     public function extraFields(): array
     {
         return ['id', 'status'];
@@ -189,6 +199,29 @@ class ExportJob extends Model
     public function commit(): self
     {
         $this->storage->save();
+        $this->lastCommitAt = microtime(true);
+        $this->rowsSinceCommit = 0;
+
+        return $this;
+    }
+
+    /**
+     * Like commit(), but skips the cache write unless enough rows or enough
+     * time has passed since the last one. Intended for tight per-row loops
+     * (see AbstractExporter::generateBody()); a final commit() elsewhere in
+     * the pipeline (ExportJob::end()) always persists the last state, so a
+     * throttled/skipped commit here never loses progress permanently.
+     */
+    public function commitThrottled(): self
+    {
+        $this->rowsSinceCommit++;
+        $due = $this->lastCommitAt === null
+            || $this->rowsSinceCommit >= self::COMMIT_ROW_INTERVAL
+            || (microtime(true) - $this->lastCommitAt) >= self::COMMIT_INTERVAL_SECONDS;
+
+        if ($due) {
+            $this->commit();
+        }
 
         return $this;
     }
