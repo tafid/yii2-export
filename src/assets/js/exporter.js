@@ -132,8 +132,9 @@
               }
             });
             onError((event, es) => {
-              console.log(event, es);
+              console.error(event, es);
               es.close();
+              hipanel.notify.error("Export progress connection was lost. Please try again.");
               resetExportUI();
             });
           });
