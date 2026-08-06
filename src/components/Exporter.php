@@ -51,9 +51,18 @@ class Exporter extends Component
         }
     }
 
+    /**
+     * Reached when a start-export retry reuses an id whose job is already
+     * running/finished (export buttons render with a fixed id, so a second
+     * click after a failed attempt hits this - confirmed in production
+     * logs). Previously this only logged and left the job exactly as it
+     * was, so a stuck/stale job could never be retried: cancel it so the
+     * next attempt has a clean terminal state to start from.
+     */
     private function handleInvalidJobState(): void
     {
         Yii::error('Export: The export job must be STATUS_NEW. ' . $this->job->errorMessage);
+        $this->job->cancel('A previous export attempt with this ID did not finish cleanly; cancelled to allow retry.');
     }
 
     private function handleExportError(Exception $e): void
