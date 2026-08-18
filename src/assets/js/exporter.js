@@ -132,8 +132,9 @@
               }
             });
             onError((event, es) => {
-              console.log(event, es);
+              console.error(event, es);
               es.close();
+              hipanel.notify.error("Export progress connection was lost. Please try again.");
               resetExportUI();
             });
           });
@@ -142,50 +143,51 @@
 
       const downloadWithProgress = (id, ext) => {
         progressText.text(settings.messages.step1);
-        const xhr = $.ajaxSettings.xhr();
-        xhr.onreadystatechange = function () {
-          if (this.readyState === 4 && this.status === 200) {
-            const filename = "report_" + id + "." + ext;
-            if (ext === "md") {
+
+        if (ext === "md") {
+          // Not a file download - read the body and copy it to clipboard instead.
+          const xhr = $.ajaxSettings.xhr();
+          xhr.onreadystatechange = function () {
+            if (this.readyState === 4 && this.status === 200) {
               methods.copy(xhr.responseText);
-            } else {
-              if (typeof window.chrome !== "undefined") {
-                // Chrome version
-                const link = document.createElement("a");
-                link.href = window.URL.createObjectURL(xhr.response);
-                link.download = filename;
-                link.click();
-              } else if (typeof window.navigator.msSaveBlob !== "undefined") {
-                // IE version
-                var blob = new Blob([xhr.response], { type: "application/force-download" });
-                window.navigator.msSaveBlob(blob, filename);
-              } else if (/(Version)\/(\d+)\.(\d+)(?:\.(\d+))?.*Safari\//.test(navigator.userAgent)) {
-                const link = document.createElement("a");
-                link.href = window.URL.createObjectURL(xhr.response);
-                link.download = filename;
-                link.click();
-              } else {
-                // Firefox version
-                var file = new File([xhr.response], filename, { type: "application/force-download" });
-                window.open(URL.createObjectURL(file));
-              }
-            }
-          }
-        };
-        xhr.onprogress = function (event) {
-          if (event.lengthComputable) {
-            const percentComplete = Math.floor((event.loaded / event.total) * 100) + "%";
-            progress.css("width", percentComplete);
-            progressNumberText.text(percentComplete);
-            progressDescriptionText.text("Wait until the report is downloaded");
-            if (percentComplete === "100%") {
               resetExportUI();
             }
-          }
-        };
-        xhr.responseType = ext === "md" ? "text" : "blob";
-        xhr.open("GET", settings.downloadUrl + "?id=" + id, true);
-        xhr.send();
+          };
+          xhr.responseType = "text";
+          xhr.open("GET", settings.downloadUrl + "?id=" + id, true);
+          xhr.send();
+          return;
+        }
+
+        // A blob URL + programmatic <a download>.click() only downloads
+        // reliably while the browser still considers this a user-initiated
+        // gesture. By the time this runs - after start-export, the full
+        // progress-export SSE wait, and an XHR round trip - that window has
+        // often expired, and the browser can silently drop the download with
+        // no dialog and no visible error (observed in the wild for larger,
+        // slower exports). A same-origin iframe navigation isn't subject to
+        // that gesture requirement, so it downloads reliably regardless of
+        // how long the export took. The server already sets the correct
+        // filename via Content-Disposition, so nothing needs to be computed
+        // client-side.
+        // Once the iframe request is underway, the browser's own download UI
+        // (save dialog / download shelf) takes over - this app's progress bar
+        // only needs to cover the export itself, not the file transfer, so it
+        // doesn't need to know when the download actually finishes. iframe
+        // 'load' isn't reliable for a Content-Disposition: attachment response
+        // in every browser anyway (some never fire it for a navigation that
+        // turns into a download rather than rendering a page), so waiting on
+        // it - or on any long fallback timer - just leaves the bar stuck
+        // showing "Downloading" long after the browser has already taken over.
+        progressDescriptionText.text(settings.messages.step2);
+        const iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        iframe.src = settings.downloadUrl + "?id=" + id;
+        document.body.appendChild(iframe);
+        setTimeout(() => {
+          resetExportUI();
+          iframe.remove();
+        }, 1500);
       };
 
       $(this).on("click", startExport);

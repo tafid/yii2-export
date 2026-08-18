@@ -22,11 +22,10 @@ class MDExporter extends AbstractExporter
 
     public function export(ExportJob $job): void
     {
-        $rows = [];
         $header = $this->generateHeader();
-        $batches = $this->generateBody();
-        foreach ($batches as $batch) {
-            $rows = [...$rows, ...$batch];
+        $rows = [];
+        foreach ($this->generateBody() as $row) {
+            $rows[] = $row;
         }
         $widths = $this->calculateWidths([$header, ...$rows]);
         $mdTable = $this->renderHeader($header, $widths);
